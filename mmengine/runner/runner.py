@@ -355,7 +355,17 @@ class Runner:
             self._experiment_name = f'{filename_no_ext}_{self._timestamp}'
         else:
             self._experiment_name = self.timestamp
-        self._log_dir = osp.join(self.work_dir, self.timestamp)
+
+        # get ip address
+        import socket
+        hostname = socket.gethostname()
+        addr = socket.gethostbyname(hostname)
+        global_rank = get_rank()
+        local_rank = int(os.environ['LOCAL_RANK'])
+
+        self._log_dir = osp.join(
+            self.work_dir, self.timestamp + '_rank' + str(global_rank) +
+            '_local' + str(local_rank) + '_' + hostname + '_' + addr)
         mmengine.mkdir_or_exist(self._log_dir)
         # Used to reset registries location. See :meth:`Registry.build` for
         # more details.
@@ -366,7 +376,11 @@ class Runner:
         self.log_processor = self.build_log_processor(log_processor)
         # Since `get_instance` could return any subclass of ManagerMixin. The
         # corresponding attribute needs a type hint.
-        self.logger = self.build_logger(log_level=log_level)
+        self.logger = self.build_logger(log_level=log_level, distributed=True)
+        print_log('Node Name is: ' + hostname, logger=self.logger)
+        print_log('Node IP Address is: ' + addr, logger=self.logger)
+        print_log('Global Rank is: ' + str(global_rank), logger=self.logger)
+        print_log('Local Rank is: ' + str(local_rank), logger=self.logger)
 
         # Collect and log environment information.
         self._log_env(env_cfg)
