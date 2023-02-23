@@ -118,13 +118,13 @@ class MMDistributedDataParallel(DistributedDataParallel):
         """
         # Enable automatic mixed precision training context.
         with optim_wrapper.optim_context(self):
-            with DistTimeCounter('train/data_preprocessor_forward'):
+            with DistTimeCounter(tag='train/data_preprocessor_forward'):
                 data = self.module.data_preprocessor(data, training=True)
-            with DistTimeCounter('train/model_run_forward'):
+            with DistTimeCounter(tag='train/model_run_forward'):
                 losses = self._run_forward(data, mode='loss')
-        with DistTimeCounter('train/model_parse_loses'):
+        with DistTimeCounter(tag='train/model_parse_loses'):
             parsed_loss, log_vars = self.module.parse_losses(losses)
-        with DistTimeCounter('train/optimizer_step'):
+        with DistTimeCounter(tag='train/optimizer_step'):
             optim_wrapper.update_params(parsed_loss)
         if self.detect_anomalous_params:
             detect_anomalous_params(parsed_loss, model=self)
