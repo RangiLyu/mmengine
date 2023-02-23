@@ -263,7 +263,6 @@ class DistTimeCounter:
                     times_per_count = 1000 * elapsed
                     print_log(
                         f'[{self.tag}]-time per run: {times_per_count:.1f} ms',
-                        self.logger,
                         logger='current')
                     message_hub.update_scalar(f'train/{self.tag}',
                                               times_per_count)
