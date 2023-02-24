@@ -3,6 +3,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Any, Dict, Union
 
 from torch.utils.data import DataLoader
+from mmengine.utils.dl_utils.time_counter import DistTimeCounter
 
 
 class BaseLoop(metaclass=ABCMeta):
@@ -23,8 +24,9 @@ class BaseLoop(metaclass=ABCMeta):
             # Determine whether or not different ranks use different seed.
             diff_rank_seed = runner._randomness_cfg.get(
                 'diff_rank_seed', False)
-            self.dataloader = runner.build_dataloader(
-                dataloader, seed=runner.seed, diff_rank_seed=diff_rank_seed)
+            with DistTimeCounter(tag='build/build_dataloader'):
+                self.dataloader = runner.build_dataloader(
+                    dataloader, seed=runner.seed, diff_rank_seed=diff_rank_seed)
         else:
             self.dataloader = dataloader
 

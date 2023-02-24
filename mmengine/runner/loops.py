@@ -116,7 +116,7 @@ class EpochBasedTrainLoop(BaseLoop):
         Args:
             data_batch (Sequence[dict]): Batch of data from dataloader.
         """
-        with DistTimeCounter(tag='runner/before_train_iter'):
+        with DistTimeCounter(tag='hook/before_train_iter'):
             self.runner.call_hook(
                 'before_train_iter', batch_idx=idx, data_batch=data_batch)
         # Enable gradient accumulation mode and avoid unnecessary gradient
@@ -125,7 +125,7 @@ class EpochBasedTrainLoop(BaseLoop):
         with DistTimeCounter(tag='runner/train_step'):
             outputs = self.runner.model.train_step(
                 data_batch, optim_wrapper=self.runner.optim_wrapper)
-        with DistTimeCounter(tag='runner/after_train_iter'):
+        with DistTimeCounter(tag='hook/after_train_iter'):
             self.runner.call_hook(
                 'after_train_iter',
                 batch_idx=idx,
