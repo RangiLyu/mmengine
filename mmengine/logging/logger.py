@@ -153,6 +153,8 @@ class MMLogger(Logger, ManagerMixin):
         # Get rank in DDP mode.
 
         rank = _get_rank()
+        # from mmengine.dist import get_local_rank
+        # local_rank = get_local_rank()
 
         # Config stream_handler. If `rank != 0`. stream_handler can only
         # export ERROR logs.

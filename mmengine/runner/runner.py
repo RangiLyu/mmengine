@@ -47,6 +47,9 @@ from .log_processor import LogProcessor
 from .loops import EpochBasedTrainLoop, IterBasedTrainLoop, TestLoop, ValLoop
 from .priority import Priority, get_priority
 from .utils import set_random_seed
+from mmengine.utils.dl_utils.time_counter import DistTimeCounter
+
+
 
 ConfigType = Union[Dict, Config, ConfigDict]
 ParamSchedulerType = Union[List[_ParamScheduler], Dict[str,
@@ -355,7 +358,17 @@ class Runner:
             self._experiment_name = f'{filename_no_ext}_{self._timestamp}'
         else:
             self._experiment_name = self.timestamp
-        self._log_dir = osp.join(self.work_dir, self.timestamp)
+
+        # get ip address
+        import socket
+        hostname = socket.gethostname()
+        addr = socket.gethostbyname(hostname)
+        global_rank = get_rank()
+        local_rank = int(os.environ['LOCAL_RANK'])
+
+        self._log_dir = osp.join(
+            self.work_dir, self.timestamp + '_rank' + str(global_rank) +
+            '_local' + str(local_rank) + '_' + hostname + '_' + addr)
         mmengine.mkdir_or_exist(self._log_dir)
         # Used to reset registries location. See :meth:`Registry.build` for
         # more details.
@@ -366,7 +379,11 @@ class Runner:
         self.log_processor = self.build_log_processor(log_processor)
         # Since `get_instance` could return any subclass of ManagerMixin. The
         # corresponding attribute needs a type hint.
-        self.logger = self.build_logger(log_level=log_level)
+        self.logger = self.build_logger(log_level=log_level, distributed=True)
+        print_log('Node Name is: ' + hostname, logger=self.logger)
+        print_log('Node IP Address is: ' + addr, logger=self.logger)
+        print_log('Global Rank is: ' + str(global_rank), logger=self.logger)
+        print_log('Local Rank is: ' + str(local_rank), logger=self.logger)
 
         # Collect and log environment information.
         self._log_env(env_cfg)
@@ -395,10 +412,12 @@ class Runner:
         if isinstance(model, dict) and data_preprocessor is not None:
             # Merge the data_preprocessor to model config.
             model.setdefault('data_preprocessor', data_preprocessor)
-        self.model = self.build_model(model)
+        with DistTimeCounter(tag='build/build_model'):
+            self.model = self.build_model(model)
         # wrap model
-        self.model = self.wrap_model(
-            self.cfg.get('model_wrapper_cfg'), self.model)
+        with DistTimeCounter(tag='build/wrap_model'):
+            self.model = self.wrap_model(
+                self.cfg.get('model_wrapper_cfg'), self.model)
 
         # get model name from the model class
         if hasattr(self.model, 'module'):
@@ -1652,30 +1671,33 @@ class Runner:
                 'method. Please provide `train_dataloader`, `train_cfg`, '
                 '`optimizer` and `param_scheduler` arguments when '
                 'initializing runner.')
-
-        self._train_loop = self.build_train_loop(
-            self._train_loop)  # type: ignore
+        with DistTimeCounter(tag='build/build_train_loop'):
+            self._train_loop = self.build_train_loop(
+                self._train_loop)  # type: ignore
 
         # `build_optimizer` should be called before `build_param_scheduler`
         #  because the latter depends on the former
-        self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
+        with DistTimeCounter(tag='build/build_optim_wrapper'):
+            self.optim_wrapper = self.build_optim_wrapper(self.optim_wrapper)
         # Automatically scaling lr by linear scaling rule
         self.scale_lr(self.optim_wrapper, self.auto_scale_lr)
 
         if self.param_schedulers is not None:
             self.param_schedulers = self.build_param_scheduler(  # type: ignore
                 self.param_schedulers)  # type: ignore
-
-        if self._val_loop is not None:
-            self._val_loop = self.build_val_loop(
-                self._val_loop)  # type: ignore
+        with DistTimeCounter(tag='build/build_val_loop'):
+            if self._val_loop is not None:
+                self._val_loop = self.build_val_loop(
+                    self._val_loop)  # type: ignore
         # TODO: add a contextmanager to avoid calling `before_run` many times
-        self.call_hook('before_run')
-
-        # initialize the model weights
-        self._init_model_weights()
+        with DistTimeCounter(tag='hook/before_run_hook'):
+            self.call_hook('before_run')
+        with DistTimeCounter(tag='build/init_weights'):
+            # initialize the model weights
+            self._init_model_weights()
         # make sure checkpoint-related hooks are triggered after `before_run`
-        self.load_or_resume()
+        with DistTimeCounter(tag='build/load_or_resume'):
+            self.load_or_resume()
 
         # Initiate inner count of `optim_wrapper`.
         self.optim_wrapper.initialize_count_status(

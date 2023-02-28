@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 
 from mmengine.evaluator import Evaluator
 from mmengine.registry import LOOPS
+from mmengine.utils.dl_utils.time_counter import DistTimeCounter
 from .amp import autocast
 from .base_loop import BaseLoop
 from .utils import calc_dynamic_intervals
@@ -103,7 +104,8 @@ class EpochBasedTrainLoop(BaseLoop):
         self.runner.call_hook('before_train_epoch')
         self.runner.model.train()
         for idx, data_batch in enumerate(self.dataloader):
-            self.run_iter(idx, data_batch)
+            with DistTimeCounter(tag='runner/run_iter'):
+                self.run_iter(idx, data_batch)
 
         self.runner.call_hook('after_train_epoch')
         self._epoch += 1
@@ -114,19 +116,21 @@ class EpochBasedTrainLoop(BaseLoop):
         Args:
             data_batch (Sequence[dict]): Batch of data from dataloader.
         """
-        self.runner.call_hook(
-            'before_train_iter', batch_idx=idx, data_batch=data_batch)
+        with DistTimeCounter(tag='hook/before_train_iter'):
+            self.runner.call_hook(
+                'before_train_iter', batch_idx=idx, data_batch=data_batch)
         # Enable gradient accumulation mode and avoid unnecessary gradient
         # synchronization during gradient accumulation process.
         # outputs should be a dict of loss.
-        outputs = self.runner.model.train_step(
-            data_batch, optim_wrapper=self.runner.optim_wrapper)
-
-        self.runner.call_hook(
-            'after_train_iter',
-            batch_idx=idx,
-            data_batch=data_batch,
-            outputs=outputs)
+        with DistTimeCounter(tag='runner/train_step'):
+            outputs = self.runner.model.train_step(
+                data_batch, optim_wrapper=self.runner.optim_wrapper)
+        with DistTimeCounter(tag='hook/after_train_iter'):
+            self.runner.call_hook(
+                'after_train_iter',
+                batch_idx=idx,
+                data_batch=data_batch,
+                outputs=outputs)
         self._iter += 1
 
     def _decide_current_val_interval(self) -> None:

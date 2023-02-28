@@ -580,6 +580,8 @@ class TensorboardVisBackend(BaseVisBackend):
         """
         if isinstance(value,
                       (int, float, torch.Tensor, np.ndarray, np.number)):
+            if 'loss' in name:
+                name = f'loss/{name}'
             self._tensorboard.add_scalar(name, value, step)
         else:
             warnings.warn(f'Got {type(value)}, but numpy array, torch tensor, '
